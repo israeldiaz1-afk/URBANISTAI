@@ -25,6 +25,9 @@
     <!-- ── Zona del canvas ─────────────────────────────────── -->
     <div class="canvas-area">
       <canvas id="canvas"></canvas>
+      <!-- Canvas overlay para el trazo en curso.
+           pointer-events:none para que los toques pasen al canvas de abajo. -->
+      <canvas id="preview-canvas"></canvas>
 
       <!-- Pantalla de bienvenida (se oculta al cargar foto) -->
       <div id="empty-state">
