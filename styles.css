@@ -1,28 +1,26 @@
 /* ============================================================
    UrbanistAI — Estilos globales
-   Tema oscuro, optimizado para táctil (Samsung A56 y similares)
+   Tema oscuro · mobile-first · Samsung A56 y similares
    ============================================================ */
 
-/* Variables de diseño */
+/* ── Variables de diseño ──────────────────────────────────── */
 :root {
-  --bg:           #0f172a;   /* fondo principal */
-  --bg-surface:   #1e293b;   /* superficies elevadas */
-  --bg-toolbar:   #080e1c;   /* barra inferior */
-  --border:       #1e293b;   /* separadores */
-  --accent:       #3b82f6;   /* azul principal */
-  --accent-press: #1d4ed8;   /* azul al presionar */
+  --bg:           #0f172a;
+  --bg-surface:   #1e293b;
+  --bg-toolbar:   #080e1c;
+  --border:       #1e293b;
+  --accent:       #3b82f6;
+  --accent-press: #1d4ed8;
+  --danger:       #ef4444;
+  --danger-press: #b91c1c;
   --text:         #f1f5f9;
   --text-muted:   #475569;
-  /* Altura base de la barra de herramientas (sin safe-area) */
-  --toolbar-h:    68px;
+  --toolbar-h:    68px;   /* altura base de la barra (sin safe-area) */
+  --props-h:      46px;   /* altura de la barra de propiedades */
 }
 
-/* ---- Reset mínimo ---------------------------------------- */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/* ── Reset mínimo ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
   width: 100%;
@@ -31,13 +29,12 @@ html, body {
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  /* Elimina el flash azul al tocar en Android */
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
 }
 
-/* ---- Contenedor raíz ------------------------------------- */
+/* ── Contenedor raíz ──────────────────────────────────────── */
 #app {
   position: fixed;
   inset: 0;
@@ -45,42 +42,47 @@ html, body {
   flex-direction: column;
 }
 
-/* ---- Zona del canvas ------------------------------------- */
+/* ── Zona del canvas ──────────────────────────────────────── */
 .canvas-area {
   flex: 1;
   position: relative;
   overflow: hidden;
-  min-height: 0;      /* necesario en flex para que no desborde */
+  min-height: 0;
   background: var(--bg);
 }
 
-/* El canvas ocupa todo el área disponible */
 #canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
-  /* CRÍTICO: desactiva el scroll y los gestos del navegador,
-     para que manejemos zoom y pan nosotros mismos */
+  /* CRÍTICO: desactiva gestos nativos del navegador (scroll, zoom).
+     Nosotros manejamos todo el input sobre el canvas. */
   touch-action: none;
-  cursor: grab;
 }
 
-#canvas:active { cursor: grabbing; }
+/* Cursores según herramienta activa (clase en #app) */
+#app.tool-pan     #canvas { cursor: grab; }
+#app.tool-pan     #canvas:active { cursor: grabbing; }
+#app.tool-pen     #canvas,
+#app.tool-line    #canvas,
+#app.tool-rect    #canvas,
+#app.tool-ellipse #canvas { cursor: crosshair; }
+#app.tool-eraser  #canvas { cursor: cell; }
 
-/* ---- Estado vacío (antes de cargar foto) ----------------- */
+/* ── Estado vacío ─────────────────────────────────────────── */
 #empty-state {
   position: absolute;
   inset: 0;
-  z-index: 1;           /* encima del canvas vacío */
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 16px;
   padding: 24px;
-  pointer-events: none; /* los toques pasan al canvas */
+  pointer-events: none;
 }
 
 #empty-state.hidden { display: none; }
@@ -98,9 +100,8 @@ html, body {
   text-align: center;
 }
 
-/* Botón CTA del estado vacío */
 .empty-cta {
-  pointer-events: all;   /* re-activar dentro de un contenedor con none */
+  pointer-events: all;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -111,53 +112,141 @@ html, body {
   color: var(--text);
   font-size: 15px;
   cursor: pointer;
-  transition: background 0.15s;
-  /* Target táctil cómodo */
   min-height: 48px;
+  transition: background 0.15s;
 }
-
 .empty-cta:active { background: #2d3e55; }
+.empty-cta svg { width: 18px; height: 18px; flex-shrink: 0; }
 
-.empty-cta svg {
-  width: 18px;
-  height: 18px;
+/* ── Controles inferiores ─────────────────────────────────── */
+#controls {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-/* ---- Barra de herramientas inferior ---------------------- */
-#toolbar {
-  flex-shrink: 0;
+/* ── Barra de propiedades del trazo ───────────────────────── */
+#props-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  /* Respeta el área del "home indicator" en móviles modernos */
+  padding: 0 12px;
+  height: var(--props-h);
+  background: var(--bg-surface);
+  border-top: 1px solid #2d3748;
+}
+
+/* Ocultar la barra de propiedades cuando la herramienta es "mover" */
+#app.tool-pan #props-bar {
+  display: none;
+}
+
+/* Selector de color: input nativo oculto detrás de un círculo visible */
+#color-label {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.15);
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#color-picker {
+  /* Agrandar para que el click/tap active el picker aunque el label
+     sea pequeño (evita zonas muertas en móvil) */
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  top: -50%;
+  left: -50%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 1;
+}
+
+/* Grupo: icono + slider + valor */
+.prop-group {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.prop-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* Slider de propiedades */
+.prop-group input[type="range"] {
+  flex: 1;
+  height: 4px;
+  min-width: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  /* Aumentar área de toque sin cambiar el visual */
+  padding: 8px 0;
+  margin: -8px 0;
+}
+
+.prop-val {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 30px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Barra de herramientas ────────────────────────────────── */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 8px;
   padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
   min-height: var(--toolbar-h);
   background: var(--bg-toolbar);
   border-top: 1px solid var(--border);
 }
 
-/* ---- Botones de herramienta ------------------------------ */
+/* Separador visual entre grupos de botones */
+.tool-separator {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.toolbar-spacer { flex: 1; }
+
+/* ── Botón de herramienta (con etiqueta) ──────────────────── */
 .tool-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  /* Mínimo 48×48 px para comodidad táctil (recomendación Material/HIG) */
-  min-width: 56px;
-  min-height: 52px;
-  padding: 6px 10px;
+  gap: 2px;
+  /* Mínimo 44×44 px para toque cómodo */
+  min-width: 44px;
+  min-height: 50px;
+  padding: 5px 6px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0.2px;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
   -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s, color 0.1s;
+  flex-shrink: 0;
 }
 
 .tool-btn:active:not(:disabled) {
@@ -165,32 +254,54 @@ html, body {
   color: var(--text);
 }
 
-/* Botón de acción principal (Foto) */
 .tool-btn.primary {
   background: var(--accent);
   color: #fff;
-  min-width: 64px;
+  min-width: 52px;
 }
-
-.tool-btn.primary:active {
-  background: var(--accent-press);
-}
-
-/* Estado deshabilitado */
-.tool-btn:disabled {
-  opacity: 0.3;
-  pointer-events: none;
-}
+.tool-btn.primary:active { background: var(--accent-press); }
 
 .tool-btn svg {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
 }
 
-.tool-btn span {
-  line-height: 1;
+/* Herramienta activa: resaltado con acento */
+.tool-btn.active {
+  background: rgba(59, 130, 246, 0.18);
+  color: var(--accent);
 }
 
-/* Empuja elementos hacia la derecha */
-.toolbar-spacer { flex: 1; }
+/* ── Botón de icono pequeño (undo, redo, clear) ───────────── */
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+.icon-btn:active:not(:disabled) {
+  background: var(--bg-surface);
+  color: var(--text);
+}
+.icon-btn.danger:active:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+.icon-btn svg { width: 20px; height: 20px; }
+
+/* Estado deshabilitado para todos los botones */
+.tool-btn:disabled,
+.icon-btn:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}

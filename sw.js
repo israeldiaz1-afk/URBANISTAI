@@ -4,7 +4,7 @@
 // Cambiar CACHE_NAME al actualizar assets para forzar recarga.
 // ============================================================
 
-const CACHE_NAME = 'urbanistai-v1';
+const CACHE_NAME = 'urbanistai-v2';
 
 // Archivos del shell de la app que se pre-cachean al instalar
 const PRECACHE_ASSETS = [
