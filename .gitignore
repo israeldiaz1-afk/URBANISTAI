@@ -1,0 +1,26 @@
+# Dependencias (por si en fases futuras se añade npm)
+node_modules/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editores
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Variables de entorno (nunca subir secretos)
+.env
+.env.local
+
+# Temporales de build (por si en fases futuras hay alguno)
+dist/
+build/
+.cache/

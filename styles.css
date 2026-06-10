@@ -1,0 +1,196 @@
+/* ============================================================
+   UrbanistAI — Estilos globales
+   Tema oscuro, optimizado para táctil (Samsung A56 y similares)
+   ============================================================ */
+
+/* Variables de diseño */
+:root {
+  --bg:           #0f172a;   /* fondo principal */
+  --bg-surface:   #1e293b;   /* superficies elevadas */
+  --bg-toolbar:   #080e1c;   /* barra inferior */
+  --border:       #1e293b;   /* separadores */
+  --accent:       #3b82f6;   /* azul principal */
+  --accent-press: #1d4ed8;   /* azul al presionar */
+  --text:         #f1f5f9;
+  --text-muted:   #475569;
+  /* Altura base de la barra de herramientas (sin safe-area) */
+  --toolbar-h:    68px;
+}
+
+/* ---- Reset mínimo ---------------------------------------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Elimina el flash azul al tocar en Android */
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ---- Contenedor raíz ------------------------------------- */
+#app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Zona del canvas ------------------------------------- */
+.canvas-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;      /* necesario en flex para que no desborde */
+  background: var(--bg);
+}
+
+/* El canvas ocupa todo el área disponible */
+#canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* CRÍTICO: desactiva el scroll y los gestos del navegador,
+     para que manejemos zoom y pan nosotros mismos */
+  touch-action: none;
+  cursor: grab;
+}
+
+#canvas:active { cursor: grabbing; }
+
+/* ---- Estado vacío (antes de cargar foto) ----------------- */
+#empty-state {
+  position: absolute;
+  inset: 0;
+  z-index: 1;           /* encima del canvas vacío */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  pointer-events: none; /* los toques pasan al canvas */
+}
+
+#empty-state.hidden { display: none; }
+
+.empty-icon {
+  width: 80px;
+  height: 80px;
+  color: var(--text-muted);
+}
+
+#empty-state p {
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* Botón CTA del estado vacío */
+.empty-cta {
+  pointer-events: all;   /* re-activar dentro de un contenedor con none */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  color: var(--text);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s;
+  /* Target táctil cómodo */
+  min-height: 48px;
+}
+
+.empty-cta:active { background: #2d3e55; }
+
+.empty-cta svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* ---- Barra de herramientas inferior ---------------------- */
+#toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  /* Respeta el área del "home indicator" en móviles modernos */
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+  min-height: var(--toolbar-h);
+  background: var(--bg-toolbar);
+  border-top: 1px solid var(--border);
+}
+
+/* ---- Botones de herramienta ------------------------------ */
+.tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  /* Mínimo 48×48 px para comodidad táctil (recomendación Material/HIG) */
+  min-width: 56px;
+  min-height: 52px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tool-btn:active:not(:disabled) {
+  background: var(--bg-surface);
+  color: var(--text);
+}
+
+/* Botón de acción principal (Foto) */
+.tool-btn.primary {
+  background: var(--accent);
+  color: #fff;
+  min-width: 64px;
+}
+
+.tool-btn.primary:active {
+  background: var(--accent-press);
+}
+
+/* Estado deshabilitado */
+.tool-btn:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.tool-btn svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.tool-btn span {
+  line-height: 1;
+}
+
+/* Empuja elementos hacia la derecha */
+.toolbar-spacer { flex: 1; }

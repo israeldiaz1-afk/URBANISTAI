@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="UrbanistAI">
+  <title>UrbanistAI</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Zona de canvas: ocupa todo excepto la barra inferior -->
+    <div class="canvas-area">
+      <canvas id="canvas"></canvas>
+
+      <!-- Pantalla de bienvenida: se oculta al cargar una foto -->
+      <div id="empty-state">
+        <svg class="empty-icon" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <!-- Calle desde arriba (icono decorativo) -->
+          <rect x="0" y="32" width="80" height="16" rx="2" fill="currentColor" opacity="0.12"/>
+          <rect x="32" y="0" width="16" height="80" rx="2" fill="currentColor" opacity="0.12"/>
+          <rect x="32" y="32" width="16" height="16" fill="currentColor" opacity="0.06"/>
+          <rect x="37" y="4"  width="6" height="12" rx="3" fill="currentColor" opacity="0.3"/>
+          <rect x="37" y="64" width="6" height="12" rx="3" fill="currentColor" opacity="0.3"/>
+          <rect x="4"  y="37" width="12" height="6" rx="3" fill="currentColor" opacity="0.3"/>
+          <rect x="64" y="37" width="12" height="6" rx="3" fill="currentColor" opacity="0.3"/>
+          <circle cx="16" cy="16" r="8" fill="currentColor" opacity="0.2"/>
+          <circle cx="64" cy="64" r="8" fill="currentColor" opacity="0.2"/>
+        </svg>
+
+        <p>Sube una foto de calle<br>para empezar a prototipar</p>
+
+        <!-- Botón CTA del estado vacío (también abre el selector de archivos) -->
+        <button class="empty-cta" id="btn-empty-upload">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          Elegir foto
+        </button>
+      </div>
+    </div><!-- /.canvas-area -->
+
+    <!-- Barra de herramientas inferior estilo app móvil -->
+    <nav id="toolbar" aria-label="Herramientas">
+      <!-- Input de archivo oculto: se activa desde los botones de arriba -->
+      <input type="file" id="file-input" accept="image/*" hidden aria-hidden="true">
+
+      <!-- Botón principal: abrir galería / cámara -->
+      <button id="btn-upload" class="tool-btn primary" title="Subir foto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        <span>Foto</span>
+      </button>
+
+      <!-- Separador flexible: empuja los botones siguientes a la derecha -->
+      <div class="toolbar-spacer"></div>
+
+      <!-- Botón: volver al encuadre original de la foto -->
+      <button id="btn-zoom-reset" class="tool-btn" title="Centrar imagen" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="15 3 21 3 21 9"/>
+          <polyline points="9 21 3 21 3 15"/>
+          <line x1="21" y1="3" x2="14" y2="10"/>
+          <line x1="3" y1="21" x2="10" y2="14"/>
+        </svg>
+        <span>Centrar</span>
+      </button>
+    </nav>
+
+  </div><!-- /#app -->
+
+  <script src="app.js"></script>
+</body>
+</html>

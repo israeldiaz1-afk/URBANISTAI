@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Fondo redondeado -->
+  <rect width="512" height="512" rx="80" fill="#0f172a"/>
+
+  <!-- Acera izquierda -->
+  <rect x="0" y="0" width="118" height="512" fill="#1e293b"/>
+  <!-- Acera derecha -->
+  <rect x="394" y="0" width="118" height="512" fill="#1e293b"/>
+
+  <!-- Calzada -->
+  <rect x="118" y="0" width="276" height="512" fill="#334155"/>
+
+  <!-- Carril bici (verde, lado izquierdo de la calzada) -->
+  <rect x="118" y="0" width="52" height="512" fill="#14532d"/>
+
+  <!-- Línea blanca separadora carril bici / calzada -->
+  <rect x="170" y="0" width="4" height="512" fill="#94a3b8" opacity="0.45"/>
+
+  <!-- Línea central discontinua (amarilla) -->
+  <rect x="252" y="28"  width="8" height="66" rx="4" fill="#fbbf24"/>
+  <rect x="252" y="138" width="8" height="66" rx="4" fill="#fbbf24"/>
+  <rect x="252" y="248" width="8" height="66" rx="4" fill="#fbbf24"/>
+  <rect x="252" y="358" width="8" height="66" rx="4" fill="#fbbf24"/>
+
+  <!-- Paso de peatones (franjas blancas) -->
+  <rect x="170" y="380" width="224" height="18" fill="#f1f5f9" opacity="0.88"/>
+  <rect x="170" y="414" width="224" height="18" fill="#f1f5f9" opacity="0.88"/>
+  <rect x="170" y="448" width="224" height="18" fill="#f1f5f9" opacity="0.88"/>
+
+  <!-- Árboles en acera izquierda -->
+  <circle cx="59" cy="100" r="38" fill="#166534" opacity="0.85"/>
+  <circle cx="59" cy="240" r="32" fill="#166534" opacity="0.75"/>
+  <circle cx="59" cy="370" r="35" fill="#166534" opacity="0.80"/>
+
+  <!-- Árboles en acera derecha -->
+  <circle cx="453" cy="150" r="38" fill="#166534" opacity="0.85"/>
+  <circle cx="453" cy="290" r="32" fill="#166534" opacity="0.75"/>
+  <circle cx="453" cy="430" r="30" fill="#166534" opacity="0.70"/>
+</svg>
