@@ -1,14 +1,10 @@
 // ============================================================
-// UrbanistAI — Fase 0 + Fase 1
+// UrbanistAI — Fase 0 + Fase 1 + Fase 2 (paso de cebra)
 //
 // ARQUITECTURA DE RENDER (dos capas):
 //   canvas        → foto + trazos confirmados (drawingCanvas).
-//                   Solo se redibuja cuando la escena cambia:
-//                   zoom/pan, commit, undo/redo, carga de imagen.
-//   preview-canvas → trazo EN CURSO. Se actualiza SÍNCRONAMENTE
-//                   en cada evento de movimiento, sin necesidad de
-//                   redibujar la foto de fondo. Esto es clave para
-//                   eliminar el lag en móviles de gama media.
+//                   Solo se redibuja cuando la escena cambia.
+//   preview-canvas → trazo EN CURSO y overlay de la herramienta zebra.
 // ============================================================
 
 // ── Referencias al DOM ──────────────────────────────────────
@@ -29,6 +25,14 @@ const opacityVal    = document.getElementById('opacity-val');
 const btnClear      = document.getElementById('btn-clear');
 const btnUndo       = document.getElementById('btn-undo');
 const btnRedo       = document.getElementById('btn-redo');
+const zebraHint       = document.getElementById('zebra-hint');
+const btnZebraConfirm = document.getElementById('btn-zebra-confirm');
+const btnZebraCancel  = document.getElementById('btn-zebra-cancel');
+
+// ── Constantes zebra ────────────────────────────────────────
+const ZEBRA_STRIPES     = 7;
+const ZEBRA_STRIPE_FILL = 0.5;   // fracción blanca por franja
+const ZEBRA_OPACITY     = 0.82;
 
 // ── Estado de la aplicación ─────────────────────────────────
 const state = {
@@ -48,7 +52,7 @@ const state = {
   // Herramienta y propiedades (Fase 1)
   activeTool:    'pan',
   strokeColor:   '#3b82f6',
-  strokeWidth:   5,          // px en espacio de imagen (escala con zoom)
+  strokeWidth:   5,
   strokeOpacity: 1.0,
 
   // Historial de trazos
@@ -58,7 +62,13 @@ const state = {
   isDrawing:     false,
 };
 
-// Dimensiones CSS del canvas (actualizadas en resizeCanvas)
+// ── Estado de la herramienta zebra (Fase 2) ─────────────────
+const zebraState = {
+  points:      [],   // hasta 4 puntos {x,y} en coords de imagen
+  draggingIdx: -1,
+};
+
+// Dimensiones CSS del canvas
 let cssW = 0;
 let cssH = 0;
 
@@ -66,7 +76,7 @@ let cssH = 0;
 let drawingCanvas = null;
 let dCtx          = null;
 
-// ID de requestAnimationFrame pendiente (solo para el canvas principal)
+// ID de requestAnimationFrame pendiente
 let rafId = null;
 
 // ============================================================
@@ -101,8 +111,9 @@ function init() {
   btnUndo.addEventListener('click', undo);
   btnRedo.addEventListener('click', redo);
   btnClear.addEventListener('click', clearDrawing);
+  btnZebraConfirm.addEventListener('click', confirmZebra);
+  btnZebraCancel.addEventListener('click',  cancelZebra);
 
-  // Atajos teclado (PC)
   window.addEventListener('keydown', e => {
     if (!(e.ctrlKey || e.metaKey)) return;
     if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
@@ -137,7 +148,6 @@ function resizeCanvas() {
   const h = Math.round(cssH * dpr);
   canvas.width          = w;  canvas.height          = h;
   previewCanvas.width   = w;  previewCanvas.height   = h;
-  // Cancelar trazo en curso (la orientación puede haber cambiado)
   if (state.isDrawing) { state.isDrawing = false; state.currentStroke = null; }
   draw();
 }
@@ -147,7 +157,6 @@ function resizeCanvas() {
 // Solo se llama cuando la ESCENA cambia (no en cada touchmove).
 // ============================================================
 
-// Encola un redibujado vía RAF (para zoom/pan y goma en tiempo real)
 function scheduleMainRedraw() {
   if (rafId) return;
   rafId = requestAnimationFrame(() => { rafId = null; draw(); });
@@ -169,13 +178,13 @@ function draw() {
   ctx.drawImage(state.image, -imgW / 2, -imgH / 2);
   if (drawingCanvas) ctx.drawImage(drawingCanvas, -imgW / 2, -imgH / 2);
   ctx.restore();
-  // El trazo en curso se muestra en previewCanvas, no aquí.
+
+  // Al hacer zoom/pan, el overlay zebra debe seguir al asfalto
+  if (state.activeTool === 'zebra') drawZebraPreview();
 }
 
 // ============================================================
-// CANVAS DE PREVIEW — solo el trazo en curso
-// Actualizado SÍNCRONAMENTE en cada evento de movimiento.
-// Al no incluir la foto, es muy barato de redibujar.
+// CANVAS DE PREVIEW — trazo EN CURSO y overlay zebra
 // ============================================================
 
 function clearPreview() {
@@ -183,7 +192,6 @@ function clearPreview() {
 }
 
 // Aplica el mismo transform que draw() para trabajar en coords de imagen.
-// Llamar siempre entre save() y restore().
 function applyImgTransform(targetCtx) {
   const dpr  = window.devicePixelRatio || 1;
   const imgW = state.image.naturalWidth;
@@ -195,7 +203,6 @@ function applyImgTransform(targetCtx) {
 }
 
 // ── Pincel: añade el segmento nuevo SIN borrar el canvas ────
-// El trazo se acumula en el previewCanvas punto a punto.
 function appendPenSegment(prevPt, currPt) {
   const s = state.currentStroke;
   pCtx.save();
@@ -212,8 +219,7 @@ function appendPenSegment(prevPt, currPt) {
   pCtx.restore();
 }
 
-// ── Formas (línea/rect/elipse): borra el canvas y redibuja ──
-// Necesario porque la forma entera cambia en cada evento.
+// ── Formas: borra y redibuja la forma entera ────────────────
 function updateShapePreview() {
   clearPreview();
   pCtx.save();
@@ -222,16 +228,12 @@ function updateShapePreview() {
   pCtx.restore();
 }
 
-// ── Goma: cursor visual (círculo) en previewCanvas ──────────
-// La goma borra en drawingCanvas síncronamente (applyEraserSegment),
-// y el canvas principal se actualiza vía RAF. Este cursor da
-// feedback visual inmediato de posición y tamaño.
+// ── Goma: cursor visual en previewCanvas ────────────────────
 function drawEraserCursor(imgPt) {
   clearPreview();
   pCtx.save();
   applyImgTransform(pCtx);
   pCtx.strokeStyle = 'rgba(255,255,255,0.85)';
-  // lineWidth en coords de imagen para que el cursor sea 1.5px en pantalla
   pCtx.lineWidth   = Math.max(0.5, 1.5 / state.scale);
   pCtx.setLineDash([Math.max(1, 3 / state.scale), Math.max(1, 3 / state.scale)]);
   pCtx.beginPath();
@@ -241,8 +243,6 @@ function drawEraserCursor(imgPt) {
 }
 
 // ── Goma: aplica el borrado DIRECTAMENTE a drawingCanvas ────
-// Se llama en cada touchmove; el resultado aparece en el canvas
-// principal la siguiente vez que draw() se ejecuta (vía RAF).
 function applyEraserSegment(prevPt, currPt) {
   const s = state.currentStroke;
   dCtx.save();
@@ -251,7 +251,7 @@ function applyEraserSegment(prevPt, currPt) {
   dCtx.lineCap     = 'round';
   dCtx.lineJoin    = 'round';
   dCtx.lineWidth   = s.width;
-  dCtx.strokeStyle = 'rgba(0,0,0,1)'; // color irrelevante con destination-out
+  dCtx.strokeStyle = 'rgba(0,0,0,1)';
   dCtx.beginPath();
   dCtx.moveTo(prevPt.x, prevPt.y);
   dCtx.lineTo(currPt.x, currPt.y);
@@ -260,7 +260,7 @@ function applyEraserSegment(prevPt, currPt) {
 }
 
 // ============================================================
-// CONVERSIÓN DE COORDENADAS (pantalla → imagen)
+// CONVERSIÓN DE COORDENADAS
 // ============================================================
 
 function screenToImg(sx, sy) {
@@ -270,9 +270,15 @@ function screenToImg(sx, sy) {
   };
 }
 
+function imgToScreen(ix, iy) {
+  return {
+    x: (ix - state.image.naturalWidth  / 2) * state.scale + cssW / 2 + state.panX,
+    y: (iy - state.image.naturalHeight / 2) * state.scale + cssH / 2 + state.panY,
+  };
+}
+
 // ============================================================
-// RENDERIZADO DE UN TRAZO (sobre drawingCanvas o previewCanvas)
-// El contexto debe estar en coordenadas de imagen.
+// RENDERIZADO DE TRAZOS
 // ============================================================
 
 function renderStroke(targetCtx, stroke) {
@@ -319,9 +325,7 @@ function renderStroke(targetCtx, stroke) {
   targetCtx.restore();
 }
 
-// Curva suavizada mediante bezier cuadrático a través de los puntos.
-// Se usa al CONFIRMAR el trazo del pincel (la versión definitiva).
-// En preview se usan segmentos rectos para mayor velocidad.
+// Curva suavizada mediante bezier cuadrático (versión definitiva del pincel).
 function drawSmoothPath(targetCtx, points) {
   if (!points || points.length === 0) return;
   if (points.length === 1) {
@@ -370,6 +374,8 @@ function rebuildDrawingCanvas() {
       dCtx.strokeStyle = 'rgba(0,0,0,1)';
       drawSmoothPath(dCtx, stroke.points);
       dCtx.restore();
+    } else if (stroke.tool === 'zebra') {
+      renderZebraStroke(dCtx, stroke);
     } else {
       renderStroke(dCtx, stroke);
     }
@@ -393,6 +399,8 @@ function handleFile(e) {
       state.redoStack     = [];
       state.currentStroke = null;
       state.isDrawing     = false;
+      zebraState.points      = [];
+      zebraState.draggingIdx = -1;
       clearPreview();
       initDrawingCanvas();
       fitToCanvas();
@@ -417,10 +425,15 @@ function fitToCanvas() {
 // ============================================================
 
 function setActiveTool(tool) {
-  // Cancelar trazo en curso al cambiar de herramienta
   if (state.isDrawing) {
     state.isDrawing     = false;
     state.currentStroke = null;
+    clearPreview();
+  }
+  // Salir de zebra: resetear estado y limpiar overlay
+  if (state.activeTool === 'zebra' && tool !== 'zebra') {
+    zebraState.points      = [];
+    zebraState.draggingIdx = -1;
     clearPreview();
   }
   state.activeTool = tool;
@@ -428,6 +441,12 @@ function setActiveTool(tool) {
   document.querySelectorAll('[data-tool]').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.tool === tool)
   );
+  // Entrar en zebra: inicializar instrucciones
+  if (tool === 'zebra') {
+    zebraState.points      = [];
+    zebraState.draggingIdx = -1;
+    updateZebraUI();
+  }
 }
 
 function updateButtons() {
@@ -438,6 +457,211 @@ function updateButtons() {
   document.querySelectorAll('[data-tool]').forEach(btn => {
     if (btn.dataset.tool !== 'pan') btn.disabled = !hasImage;
   });
+}
+
+// ============================================================
+// FASE 2 — PASO DE CEBRA EN PERSPECTIVA
+// ============================================================
+
+// Calcula la homografía que mapea src → dst (4 pares de puntos).
+// Resuelve el sistema 8×8 por eliminación gaussiana con pivote parcial.
+// Devuelve H como array de 9 elementos [h0..h7, 1] (h8 = h33 = 1).
+function computeHomography(src, dst) {
+  const A = [];
+  const b = [];
+  for (let i = 0; i < 4; i++) {
+    const { x: xi, y: yi } = src[i];
+    const { x: xp, y: yp } = dst[i];
+    A.push([ xi, yi, 1,  0,  0, 0, -xi*xp, -yi*xp ]);  b.push(xp);
+    A.push([  0,  0, 0, xi, yi, 1, -xi*yp, -yi*yp ]);   b.push(yp);
+  }
+  const n = 8;
+  const M = A.map((row, i) => [...row, b[i]]);
+
+  for (let col = 0; col < n; col++) {
+    let maxRow = col;
+    for (let row = col + 1; row < n; row++) {
+      if (Math.abs(M[row][col]) > Math.abs(M[maxRow][col])) maxRow = row;
+    }
+    [M[col], M[maxRow]] = [M[maxRow], M[col]];
+    if (Math.abs(M[col][col]) < 1e-10) return null;   // quad degenerado
+    for (let row = 0; row < n; row++) {
+      if (row === col) continue;
+      const f = M[row][col] / M[col][col];
+      for (let k = col; k <= n; k++) M[row][k] -= f * M[col][k];
+    }
+  }
+  const h = M.map((row, i) => row[n] / row[i]);
+  return [...h, 1];   // h[8] = h33 = 1
+}
+
+// Proyecta el punto (x, y) del espacio fuente al espacio destino con H.
+function applyH(H, x, y) {
+  const w = H[6]*x + H[7]*y + H[8];
+  return { x: (H[0]*x + H[1]*y + H[2]) / w, y: (H[3]*x + H[4]*y + H[5]) / w };
+}
+
+// Busca el punto de control más cercano al toque (24 px en pantalla).
+function hitTestZebraPoint(sx, sy) {
+  const R2 = 24 * 24;
+  for (let i = zebraState.points.length - 1; i >= 0; i--) {
+    const sp = imgToScreen(zebraState.points[i].x, zebraState.points[i].y);
+    const dx = sx - sp.x, dy = sy - sp.y;
+    if (dx*dx + dy*dy <= R2) return i;
+  }
+  return -1;
+}
+
+// Actualiza el texto de instrucción y el estado del botón Confirmar.
+const ZEBRA_HINTS = [
+  'Toca la esquina PRÓXIMA-IZQUIERDA del paso (1/4)',
+  'Toca la esquina PRÓXIMA-DERECHA (2/4)',
+  'Toca la esquina LEJANA-DERECHA (3/4)',
+  'Toca la esquina LEJANA-IZQUIERDA (4/4)',
+  'Arrastra para ajustar · Pulsa ✓ para pintar',
+];
+function updateZebraUI() {
+  const n = zebraState.points.length;
+  zebraHint.textContent    = ZEBRA_HINTS[Math.min(n, 4)];
+  btnZebraConfirm.disabled = n < 4;
+}
+
+// Dibuja las franjas proyectadas más los handles en previewCanvas.
+// Se llama síncrono tras cada cambio de punto y desde draw() al zoom/pan.
+function drawZebraPreview() {
+  clearPreview();
+  if (!state.image) return;
+  const pts = zebraState.points;
+  if (pts.length === 0) return;
+
+  pCtx.save();
+  applyImgTransform(pCtx);
+
+  // ── Franjas proyectadas (cuando ya hay 4 puntos) ─────────
+  if (pts.length === 4) {
+    const H = computeHomography([{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}], pts);
+    if (H) {
+      pCtx.globalAlpha = ZEBRA_OPACITY;
+      pCtx.fillStyle   = '#ffffff';
+      for (let i = 0; i < ZEBRA_STRIPES; i++) {
+        const y0 = i / ZEBRA_STRIPES;
+        const y1 = (i + ZEBRA_STRIPE_FILL) / ZEBRA_STRIPES;
+        const c  = [applyH(H,0,y0), applyH(H,1,y0), applyH(H,1,y1), applyH(H,0,y1)];
+        pCtx.beginPath();
+        pCtx.moveTo(c[0].x, c[0].y);
+        for (let j = 1; j < 4; j++) pCtx.lineTo(c[j].x, c[j].y);
+        pCtx.closePath();
+        pCtx.fill();
+      }
+      pCtx.globalAlpha = 1;
+    }
+  }
+
+  // ── Contorno del quad (línea guía amarilla discontinua) ──
+  if (pts.length >= 2) {
+    pCtx.strokeStyle = 'rgba(250,204,21,0.9)';
+    pCtx.lineWidth   = Math.max(0.5, 2 / state.scale);
+    pCtx.setLineDash([Math.max(1, 5/state.scale), Math.max(1, 5/state.scale)]);
+    pCtx.beginPath();
+    pCtx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) pCtx.lineTo(pts[i].x, pts[i].y);
+    if (pts.length === 4) pCtx.closePath();
+    pCtx.stroke();
+    pCtx.setLineDash([]);
+  }
+
+  // ── Handles de control (círculos numerados) ──────────────
+  const R        = Math.max(5, 10 / state.scale);
+  const fontSize = Math.max(5, 11 / state.scale);
+  for (let i = 0; i < pts.length; i++) {
+    pCtx.beginPath();
+    pCtx.arc(pts[i].x, pts[i].y, R, 0, Math.PI * 2);
+    pCtx.fillStyle = i === zebraState.draggingIdx ? '#facc15' : '#3b82f6';
+    pCtx.fill();
+    pCtx.strokeStyle = 'rgba(255,255,255,0.9)';
+    pCtx.lineWidth   = Math.max(0.4, 1.5 / state.scale);
+    pCtx.stroke();
+    pCtx.fillStyle    = '#fff';
+    pCtx.font         = `bold ${fontSize}px sans-serif`;
+    pCtx.textAlign    = 'center';
+    pCtx.textBaseline = 'middle';
+    pCtx.fillText(String(i + 1), pts[i].x, pts[i].y);
+  }
+
+  pCtx.restore();
+}
+
+// Renderiza las franjas de un stroke zebra sobre targetCtx
+// (que debe estar en espacio de imagen, sin transform adicional).
+function renderZebraStroke(targetCtx, stroke) {
+  const H = computeHomography(
+    [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}],
+    stroke.points
+  );
+  if (!H) return;
+  targetCtx.save();
+  targetCtx.globalAlpha = stroke.opacity;
+  targetCtx.fillStyle   = '#ffffff';
+  for (let i = 0; i < stroke.stripes; i++) {
+    const y0 = i / stroke.stripes;
+    const y1 = (i + stroke.stripeFill) / stroke.stripes;
+    const c  = [applyH(H,0,y0), applyH(H,1,y0), applyH(H,1,y1), applyH(H,0,y1)];
+    targetCtx.beginPath();
+    targetCtx.moveTo(c[0].x, c[0].y);
+    for (let j = 1; j < 4; j++) targetCtx.lineTo(c[j].x, c[j].y);
+    targetCtx.closePath();
+    targetCtx.fill();
+  }
+  targetCtx.restore();
+}
+
+// Maneja el toque/click en modo zebra.
+function handleZebraDown(sx, sy) {
+  if (!state.image) return;
+  if (zebraState.points.length < 4) {
+    zebraState.points.push(screenToImg(sx, sy));
+    updateZebraUI();
+    drawZebraPreview();
+  } else {
+    zebraState.draggingIdx = hitTestZebraPoint(sx, sy);
+    if (zebraState.draggingIdx >= 0) drawZebraPreview();
+  }
+}
+
+// Mueve el handle que se está arrastrando.
+function handleZebraMove(sx, sy) {
+  if (zebraState.draggingIdx < 0) return;
+  zebraState.points[zebraState.draggingIdx] = screenToImg(sx, sy);
+  drawZebraPreview();
+}
+
+// Vuelca las franjas al drawingCanvas y cierra la herramienta.
+function confirmZebra() {
+  const pts = zebraState.points;
+  if (pts.length !== 4 || !state.image) return;
+
+  const stroke = {
+    tool:      'zebra',
+    points:    [...pts],
+    stripes:   ZEBRA_STRIPES,
+    stripeFill: ZEBRA_STRIPE_FILL,
+    opacity:   ZEBRA_OPACITY,
+  };
+  renderZebraStroke(dCtx, stroke);
+  state.strokes.push(stroke);
+  state.redoStack = [];
+
+  zebraState.points      = [];
+  zebraState.draggingIdx = -1;
+  clearPreview();
+  updateButtons();
+  draw();
+  setActiveTool('pan');
+}
+
+// Cancela sin pintar nada.
+function cancelZebra() {
+  setActiveTool('pan');
 }
 
 // ============================================================
@@ -454,7 +678,6 @@ function startDrawing(sx, sy) {
 
   if (base.tool === 'pen') {
     state.currentStroke = { ...base, points: [pt] };
-    // Dot inicial: visible si el usuario solo toca sin mover
     pCtx.save();
     applyImgTransform(pCtx);
     pCtx.fillStyle   = base.color;
@@ -466,7 +689,6 @@ function startDrawing(sx, sy) {
 
   } else if (base.tool === 'eraser') {
     state.currentStroke = { ...base, points: [pt] };
-    // Borrado del primer punto (cubre el caso de toque sin movimiento)
     dCtx.save();
     dCtx.globalCompositeOperation = 'destination-out';
     dCtx.globalAlpha = base.opacity;
@@ -478,7 +700,6 @@ function startDrawing(sx, sy) {
     scheduleMainRedraw();
 
   } else {
-    // line, rect, ellipse: x1/y1 fijo, x2/y2 se actualiza al arrastrar
     state.currentStroke = { ...base, x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y };
     updateShapePreview();
   }
@@ -493,22 +714,20 @@ function continueDrawing(sx, sy) {
     case 'pen': {
       const prev = s.points[s.points.length - 1];
       s.points.push(pt);
-      // Síncrono: solo dibuja el nuevo segmento, no borra ni redibuja la foto
       appendPenSegment(prev, pt);
       break;
     }
     case 'eraser': {
       const prev = s.points[s.points.length - 1];
       s.points.push(pt);
-      applyEraserSegment(prev, pt);  // borra en drawingCanvas (síncrono)
-      drawEraserCursor(pt);          // cursor en previewCanvas (síncrono)
-      scheduleMainRedraw();          // refleja el borrado en canvas principal (RAF)
+      applyEraserSegment(prev, pt);
+      drawEraserCursor(pt);
+      scheduleMainRedraw();
       break;
     }
-    default: // line, rect, ellipse
+    default:
       s.x2 = pt.x;
       s.y2 = pt.y;
-      // Síncrono: limpia previewCanvas y redibuja solo la forma
       updateShapePreview();
       break;
   }
@@ -525,18 +744,14 @@ function finishDrawing() {
     (s.x1 !== undefined && (s.x1 !== s.x2 || s.y1 !== s.y2));
 
   if (hasContent) {
-    if (s.tool !== 'eraser') {
-      // Vuelca la versión definitiva (con bezier smooth) al drawingCanvas
-      renderStroke(dCtx, s);
-    }
-    // La goma ya fue aplicada incrementalmente en continueDrawing
+    if (s.tool !== 'eraser') renderStroke(dCtx, s);
     state.strokes.push(s);
     state.redoStack = [];
     updateButtons();
   }
 
   state.currentStroke = null;
-  draw(); // síncrono: evita el flash de 1 frame entre clearPreview y el render
+  draw();
 }
 
 // ============================================================
@@ -546,7 +761,7 @@ function finishDrawing() {
 function undo() {
   if (state.strokes.length === 0) return;
   state.redoStack.push(state.strokes.pop());
-  rebuildDrawingCanvas(); // O(n) en trazos, aceptable para Fase 1
+  rebuildDrawingCanvas();
   updateButtons();
   draw();
 }
@@ -555,7 +770,6 @@ function redo() {
   if (state.redoStack.length === 0) return;
   const stroke = state.redoStack.pop();
   state.strokes.push(stroke);
-  // Solo aplica el último trazo (más rápido que rebuild completo)
   if (stroke.tool === 'eraser') {
     dCtx.save();
     dCtx.globalCompositeOperation = 'destination-out';
@@ -566,6 +780,8 @@ function redo() {
     dCtx.strokeStyle = 'rgba(0,0,0,1)';
     drawSmoothPath(dCtx, stroke.points);
     dCtx.restore();
+  } else if (stroke.tool === 'zebra') {
+    renderZebraStroke(dCtx, stroke);
   } else {
     renderStroke(dCtx, stroke);
   }
@@ -610,12 +826,16 @@ function setupMouse() {
   canvas.addEventListener('mousedown', e => {
     if (!state.image || e.button !== 0) return;
     const rect = canvas.getBoundingClientRect();
+    const sx   = e.clientX - rect.left;
+    const sy   = e.clientY - rect.top;
     if (state.activeTool === 'pan') {
       state.dragging = true;
       state.lastX    = e.clientX;
       state.lastY    = e.clientY;
+    } else if (state.activeTool === 'zebra') {
+      handleZebraDown(sx, sy);
     } else {
-      startDrawing(e.clientX - rect.left, e.clientY - rect.top);
+      startDrawing(sx, sy);
     }
   });
 
@@ -627,6 +847,9 @@ function setupMouse() {
       state.lastX = e.clientX;
       state.lastY = e.clientY;
       scheduleMainRedraw();
+    } else if (state.activeTool === 'zebra' && zebraState.draggingIdx >= 0) {
+      const rect = canvas.getBoundingClientRect();
+      handleZebraMove(e.clientX - rect.left, e.clientY - rect.top);
     } else if (state.isDrawing) {
       const rect = canvas.getBoundingClientRect();
       continueDrawing(e.clientX - rect.left, e.clientY - rect.top);
@@ -635,7 +858,11 @@ function setupMouse() {
 
   window.addEventListener('mouseup', () => {
     state.dragging = false;
-    finishDrawing();
+    if (state.activeTool === 'zebra') {
+      zebraState.draggingIdx = -1;
+    } else {
+      finishDrawing();
+    }
   });
 }
 
@@ -657,20 +884,18 @@ function getTouchMid(touches) {
 }
 
 function setupTouch() {
-  // passive: false en todos para llamar e.preventDefault() y bloquear
-  // el scroll/zoom nativo del navegador mientras usamos el canvas.
-
   canvas.addEventListener('touchstart', e => {
     e.preventDefault();
     if (!state.image) return;
 
     if (e.touches.length >= 2) {
-      // Dos dedos → cancelar dibujo y activar pinch-zoom
+      // Dos dedos → pinch-zoom, cancelar cualquier operación en curso
       if (state.isDrawing) {
         state.isDrawing     = false;
         state.currentStroke = null;
         clearPreview();
       }
+      zebraState.draggingIdx = -1;
       state.dragging   = false;
       state.isPinching = true;
       state.pinchDist  = getTouchDist(e.touches);
@@ -690,6 +915,8 @@ function setupTouch() {
       state.dragging = true;
       state.lastX    = e.touches[0].clientX;
       state.lastY    = e.touches[0].clientY;
+    } else if (state.activeTool === 'zebra') {
+      handleZebraDown(sx, sy);
     } else {
       startDrawing(sx, sy);
     }
@@ -732,6 +959,8 @@ function setupTouch() {
       state.lastX = e.touches[0].clientX;
       state.lastY = e.touches[0].clientY;
       scheduleMainRedraw();
+    } else if (state.activeTool === 'zebra') {
+      if (zebraState.draggingIdx >= 0) handleZebraMove(sx, sy);
     } else {
       continueDrawing(sx, sy);
     }
@@ -742,7 +971,11 @@ function setupTouch() {
     if (e.touches.length === 0) {
       state.dragging   = false;
       state.isPinching = false;
-      finishDrawing();
+      if (state.activeTool === 'zebra') {
+        zebraState.draggingIdx = -1;
+      } else {
+        finishDrawing();
+      }
     } else if (e.touches.length === 1) {
       state.isPinching = false;
       if (state.activeTool === 'pan') {
