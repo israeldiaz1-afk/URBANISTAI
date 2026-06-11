@@ -25,14 +25,18 @@ const opacityVal    = document.getElementById('opacity-val');
 const btnClear      = document.getElementById('btn-clear');
 const btnUndo       = document.getElementById('btn-undo');
 const btnRedo       = document.getElementById('btn-redo');
-const zebraHint       = document.getElementById('zebra-hint');
-const btnZebraConfirm = document.getElementById('btn-zebra-confirm');
-const btnZebraCancel  = document.getElementById('btn-zebra-cancel');
+const zebraHint        = document.getElementById('zebra-hint');
+const btnZebraConfirm  = document.getElementById('btn-zebra-confirm');
+const btnZebraCancel   = document.getElementById('btn-zebra-cancel');
+const zebraLengthSlider  = document.getElementById('zebra-length');
+const zebraLengthVal     = document.getElementById('zebra-length-val');
+const zebraStripeWSlider = document.getElementById('zebra-stripe-w');
+const zebraStripeWVal    = document.getElementById('zebra-stripe-w-val');
+const zebraGapWSlider    = document.getElementById('zebra-gap-w');
+const zebraGapWVal       = document.getElementById('zebra-gap-w-val');
 
 // ── Constantes zebra ────────────────────────────────────────
-const ZEBRA_STRIPES     = 7;
-const ZEBRA_STRIPE_FILL = 0.5;   // fracción blanca por franja
-const ZEBRA_OPACITY     = 0.82;
+const ZEBRA_OPACITY = 0.82;   // stripes y stripeFill son dinámicos (sliders)
 
 // ── Estado de la aplicación ─────────────────────────────────
 const state = {
@@ -113,6 +117,13 @@ function init() {
   btnClear.addEventListener('click', clearDrawing);
   btnZebraConfirm.addEventListener('click', confirmZebra);
   btnZebraCancel.addEventListener('click',  cancelZebra);
+
+  [zebraLengthSlider, zebraStripeWSlider, zebraGapWSlider].forEach(s =>
+    s.addEventListener('input', () => {
+      updateZebraParamDisplays();
+      if (zebraState.points.length >= 2) drawZebraPreview();
+    })
+  );
 
   window.addEventListener('keydown', e => {
     if (!(e.ctrlKey || e.metaKey)) return;
@@ -441,10 +452,11 @@ function setActiveTool(tool) {
   document.querySelectorAll('[data-tool]').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.tool === tool)
   );
-  // Entrar en zebra: inicializar instrucciones
+  // Entrar en zebra: inicializar instrucciones y displays de parámetros
   if (tool === 'zebra') {
     zebraState.points      = [];
     zebraState.draggingIdx = -1;
+    updateZebraParamDisplays();
     updateZebraUI();
   }
 }
@@ -501,29 +513,53 @@ function applyH(H, x, y) {
   return { x: (H[0]*x + H[1]*y + H[2]) / w, y: (H[3]*x + H[4]*y + H[5]) / w };
 }
 
-// Busca el punto de control más cercano al toque (24 px en pantalla).
+// Devuelve el índice del punto más cercano al toque dentro de 32 px en pantalla.
+// Usa distancia mínima (no "primero dentro del radio") para evitar ambigüedades
+// cuando dos puntos están cerca entre sí.
 function hitTestZebraPoint(sx, sy) {
-  const R2 = 24 * 24;
-  for (let i = zebraState.points.length - 1; i >= 0; i--) {
+  const R2 = 32 * 32;
+  let bestIdx = -1;
+  let bestD2  = R2 + 1;
+  for (let i = 0; i < zebraState.points.length; i++) {
     const sp = imgToScreen(zebraState.points[i].x, zebraState.points[i].y);
-    const dx = sx - sp.x, dy = sy - sp.y;
-    if (dx*dx + dy*dy <= R2) return i;
+    const d2 = (sx - sp.x) ** 2 + (sy - sp.y) ** 2;
+    if (d2 <= R2 && d2 < bestD2) { bestD2 = d2; bestIdx = i; }
   }
-  return -1;
+  return bestIdx;
 }
 
-// Actualiza el texto de instrucción y el estado del botón Confirmar.
+// Orden de puntos: 1=lejos-izq, 2=cerca-izq, 3=cerca-der, 4=lejos-der
 const ZEBRA_HINTS = [
-  'Toca la esquina PRÓXIMA-IZQUIERDA del paso (1/4)',
-  'Toca la esquina PRÓXIMA-DERECHA (2/4)',
-  'Toca la esquina LEJANA-DERECHA (3/4)',
-  'Toca la esquina LEJANA-IZQUIERDA (4/4)',
-  'Arrastra para ajustar · Pulsa ✓ para pintar',
+  'Toca la esquina LEJANA-IZQUIERDA (1/4)',
+  'Toca la esquina PRÓXIMA-IZQUIERDA (2/4)',
+  'Toca la esquina PRÓXIMA-DERECHA (3/4)',
+  'Toca la esquina LEJANA-DERECHA (4/4)',
+  'Arrastra cualquier punto para ajustar · ✓ para pintar',
 ];
+
 function updateZebraUI() {
   const n = zebraState.points.length;
   zebraHint.textContent    = ZEBRA_HINTS[Math.min(n, 4)];
   btnZebraConfirm.disabled = n < 4;
+}
+
+// Calcula stripes y stripeFill a partir de los sliders (proporciones reales).
+function getZebraParams() {
+  const lengthM  = parseFloat(zebraLengthSlider.value);
+  const stripeM  = parseFloat(zebraStripeWSlider.value) / 100;
+  const gapM     = parseFloat(zebraGapWSlider.value) / 100;
+  const period   = stripeM + gapM;
+  return {
+    stripes:    Math.max(1, Math.round(lengthM / period)),
+    stripeFill: stripeM / period,
+  };
+}
+
+// Sincroniza los textos de valor de los sliders.
+function updateZebraParamDisplays() {
+  zebraLengthVal.textContent  = zebraLengthSlider.value + ' m';
+  zebraStripeWVal.textContent = zebraStripeWSlider.value + ' cm';
+  zebraGapWVal.textContent    = zebraGapWSlider.value + ' cm';
 }
 
 // Dibuja las franjas proyectadas más los handles en previewCanvas.
@@ -538,14 +574,21 @@ function drawZebraPreview() {
   applyImgTransform(pCtx);
 
   // ── Franjas proyectadas (cuando ya hay 4 puntos) ─────────
+  // Orden de usuario: 0=lejos-izq, 1=cerca-izq, 2=cerca-der, 3=lejos-der
+  // Mapeo al rectángulo plano: y=0 ↔ lado próximo (pts[1],pts[2]) — wide
+  //                            y=1 ↔ lado lejano  (pts[0],pts[3]) — narrow
   if (pts.length === 4) {
-    const H = computeHomography([{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}], pts);
+    const H = computeHomography(
+      [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}],
+      [pts[1], pts[2], pts[3], pts[0]]
+    );
     if (H) {
+      const { stripes, stripeFill } = getZebraParams();
       pCtx.globalAlpha = ZEBRA_OPACITY;
       pCtx.fillStyle   = '#ffffff';
-      for (let i = 0; i < ZEBRA_STRIPES; i++) {
-        const y0 = i / ZEBRA_STRIPES;
-        const y1 = (i + ZEBRA_STRIPE_FILL) / ZEBRA_STRIPES;
+      for (let i = 0; i < stripes; i++) {
+        const y0 = i / stripes;
+        const y1 = (i + stripeFill) / stripes;
         const c  = [applyH(H,0,y0), applyH(H,1,y0), applyH(H,1,y1), applyH(H,0,y1)];
         pCtx.beginPath();
         pCtx.moveTo(c[0].x, c[0].y);
@@ -594,9 +637,10 @@ function drawZebraPreview() {
 // Renderiza las franjas de un stroke zebra sobre targetCtx
 // (que debe estar en espacio de imagen, sin transform adicional).
 function renderZebraStroke(targetCtx, stroke) {
+  const p = stroke.points;   // [lejos-izq, cerca-izq, cerca-der, lejos-der]
   const H = computeHomography(
     [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}],
-    stroke.points
+    [p[1], p[2], p[3], p[0]]   // y=0 ↔ lado próximo, y=1 ↔ lado lejano
   );
   if (!H) return;
   targetCtx.save();
@@ -640,11 +684,12 @@ function confirmZebra() {
   const pts = zebraState.points;
   if (pts.length !== 4 || !state.image) return;
 
+  const { stripes, stripeFill } = getZebraParams();
   const stroke = {
     tool:      'zebra',
     points:    [...pts],
-    stripes:   ZEBRA_STRIPES,
-    stripeFill: ZEBRA_STRIPE_FILL,
+    stripes,
+    stripeFill,
     opacity:   ZEBRA_OPACITY,
   };
   renderZebraStroke(dCtx, stroke);
