@@ -25,3 +25,12 @@ y que parezca real, no la precisión técnica milimétrica.
 - Fase 2: pintura en perspectiva (homografía) - SIN IA
 - Fase 3: IA (MobileSAM local + Worker Cloudflare inpainting)
 - Prioridad: que funcione en móvil por encima de añadir features
+
+## Pendientes / próximas mejoras
+
+- Sistema general de SELECCIÓN Y EDICIÓN de elementos ya validados
+  (pasos de cebra, y en el futuro carriles, mobiliario, etc.): poder
+  tocar un elemento colocado para seleccionarlo y hacer ajuste fino de
+  posición (desplazamientos mínimos), con vistas a ampliarlo luego a
+  rotar, escalar y recolorear. Diseñarlo como sistema reutilizable para
+  TODOS los tipos de elemento, no específico del paso de cebra.
