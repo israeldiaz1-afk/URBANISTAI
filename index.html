@@ -98,10 +98,16 @@
         </button>
       </div><!-- /#props-bar -->
 
-      <!-- Barra de instrucciones del paso de cebra (visible solo con tool-zebra) -->
-      <div id="zebra-bar">
+      <!-- Barra de perspectiva: paso de cebra y carril bici -->
+      <div id="zebra-bar" data-tpl="zebra">
 
-        <!-- Fila 1: instrucción + acciones -->
+        <!-- Fila 0: selector de plantilla -->
+        <div class="zebra-row zebra-tpl-row">
+          <button class="tpl-btn active" data-tpl="zebra"  aria-label="Paso de cebra">Paso de cebra</button>
+          <button class="tpl-btn"        data-tpl="carril" aria-label="Carril bici">Carril bici</button>
+        </div>
+
+        <!-- Fila 1: instrucción + acciones (compartida) -->
         <div class="zebra-row">
           <span id="zebra-hint"></span>
           <div class="toolbar-spacer"></div>
@@ -111,15 +117,15 @@
               <line x1="6"  y1="6" x2="18" y2="18"/>
             </svg>
           </button>
-          <button id="btn-zebra-confirm" class="icon-btn accent" title="Confirmar paso de cebra" disabled aria-label="Confirmar paso de cebra">
+          <button id="btn-zebra-confirm" class="icon-btn accent" title="Confirmar" disabled aria-label="Confirmar">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </button>
         </div>
 
-        <!-- Fila 2: parámetros del paso (normativa española: 50+50 cm, 2.5-4 m) -->
-        <div class="zebra-row zebra-params">
+        <!-- Fila 2a: parámetros del paso de cebra (normativa española) -->
+        <div class="zebra-row zebra-params only-zebra">
           <label class="zebra-param">
             <span>Longitud</span>
             <input type="range" id="zebra-length" min="2" max="5" step="0.5" value="3" aria-label="Longitud del paso">
@@ -137,11 +143,26 @@
           </label>
         </div>
 
-        <!-- Fila 3: apariencia de la pintura -->
+        <!-- Fila 2b: parámetros del carril bici -->
+        <div class="zebra-row zebra-params only-carril">
+          <label class="zebra-param carril-color-param" aria-label="Color del carril">
+            <span>Color</span>
+            <span class="carril-color-wrap">
+              <input type="color" id="carril-color" value="#4ade80" aria-label="Color del carril bici">
+            </span>
+          </label>
+          <label class="zebra-param">
+            <span>Borde</span>
+            <input type="range" id="carril-border" min="2" max="20" step="1" value="8" aria-label="Ancho de líneas de borde">
+            <span id="carril-border-val">8%</span>
+          </label>
+        </div>
+
+        <!-- Fila 3: apariencia de la pintura (compartida) -->
         <div class="zebra-row zebra-params">
           <label class="zebra-param">
             <span>Tono</span>
-            <input type="range" id="zebra-tone" min="0" max="100" step="5" value="15" aria-label="Tono de la pintura (0 blanco limpio, 100 sucio)">
+            <input type="range" id="zebra-tone" min="0" max="100" step="5" value="15" aria-label="Tono de la pintura">
             <span id="zebra-tone-val">15</span>
           </label>
           <label class="zebra-param">

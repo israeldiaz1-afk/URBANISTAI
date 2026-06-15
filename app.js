@@ -40,6 +40,10 @@ const zebraOpacSlider    = document.getElementById('zebra-opacity');
 const zebraOpacVal       = document.getElementById('zebra-opacity-val');
 const zebraWearSlider    = document.getElementById('zebra-wear');
 const zebraWearVal       = document.getElementById('zebra-wear-val');
+const carrilColorPicker  = document.getElementById('carril-color');
+const carrilBorderSlider = document.getElementById('carril-border');
+const carrilBorderVal    = document.getElementById('carril-border-val');
+const zebraBarEl         = document.getElementById('zebra-bar');
 const toolbarEl          = document.getElementById('toolbar');
 const toolbarWrap        = document.getElementById('toolbar-wrap');
 
@@ -78,6 +82,7 @@ const state = {
 const zebraState = {
   points:      [],   // hasta 4 puntos {x,y} en coords de imagen
   draggingIdx: -1,
+  template:    'zebra',   // 'zebra' | 'carril'
 };
 
 // Dimensiones CSS del canvas
@@ -126,8 +131,13 @@ function init() {
   btnZebraConfirm.addEventListener('click', confirmZebra);
   btnZebraCancel.addEventListener('click',  cancelZebra);
 
+  document.querySelectorAll('.tpl-btn').forEach(btn =>
+    btn.addEventListener('click', () => setZebraTemplate(btn.dataset.tpl))
+  );
+
   [zebraLengthSlider, zebraStripeWSlider, zebraGapWSlider,
-   zebraToneSlider, zebraOpacSlider, zebraWearSlider].forEach(s =>
+   zebraToneSlider, zebraOpacSlider, zebraWearSlider,
+   carrilBorderSlider, carrilColorPicker].forEach(s =>
     s.addEventListener('input', () => {
       updateZebraParamDisplays();
       if (zebraState.points.length >= 2) drawZebraPreview();
@@ -398,6 +408,8 @@ function rebuildDrawingCanvas() {
       dCtx.restore();
     } else if (stroke.tool === 'zebra') {
       renderZebraStroke(dCtx, stroke);
+    } else if (stroke.tool === 'carril') {
+      renderCarrilStroke(dCtx, stroke);
     } else {
       renderStroke(dCtx, stroke);
     }
@@ -473,10 +485,14 @@ function setActiveTool(tool) {
   document.querySelectorAll('[data-tool]').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.tool === tool)
   );
-  // Entrar en zebra: inicializar instrucciones, displays y textura de desgaste
+  // Entrar en zebra: sincronizar plantilla activa, displays y textura
   if (tool === 'zebra') {
     zebraState.points      = [];
     zebraState.draggingIdx = -1;
+    zebraBarEl.dataset.tpl = zebraState.template;
+    document.querySelectorAll('.tpl-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.tpl === zebraState.template)
+    );
     updateZebraParamDisplays();
     updateZebraUI();
     ensureWearTexture();
@@ -640,6 +656,36 @@ function updateZebraParamDisplays() {
   zebraToneVal.textContent    = zebraToneSlider.value;
   zebraOpacVal.textContent    = zebraOpacSlider.value + '%';
   zebraWearVal.textContent    = zebraWearSlider.value + '%';
+  carrilBorderVal.textContent = carrilBorderSlider.value + '%';
+}
+
+// Lee los parámetros del carril bici desde los sliders compartidos + propios.
+function getCarrilParams() {
+  const tone    = parseInt(zebraToneSlider.value, 10);
+  const opacity = parseInt(zebraOpacSlider.value, 10) / 100;
+  const wear    = parseInt(zebraWearSlider.value, 10) / 100;
+  const borderW = parseInt(carrilBorderSlider.value, 10) / 100;
+  return {
+    opacity,
+    wear,
+    borderW,
+    laneColor:  carrilColorPicker.value,
+    borderTone: getZebraToneColor(tone),
+    tone,
+  };
+}
+
+// Cambia la plantilla activa: resetea puntos y sincroniza DOM.
+function setZebraTemplate(tpl) {
+  zebraState.template    = tpl;
+  zebraState.points      = [];
+  zebraState.draggingIdx = -1;
+  zebraBarEl.dataset.tpl = tpl;
+  document.querySelectorAll('.tpl-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tpl === tpl)
+  );
+  updateZebraUI();
+  drawZebraPreview();
 }
 
 // Dibuja las franjas proyectadas más los handles en previewCanvas.
@@ -663,22 +709,22 @@ function drawZebraPreview() {
       [pts[1], pts[2], pts[3], pts[0]]
     );
     if (H) {
-      const { stripes, stripeFill, toneColor, opacity, wear } = getZebraParams();
       const imgW = state.image.naturalWidth;
       const imgH = state.image.naturalHeight;
-      pCtx.globalAlpha = opacity;
-      pCtx.fillStyle   = toneColor;
-      for (let i = 0; i < stripes; i++) {
-        const y0 = i / stripes;
-        const y1 = (i + stripeFill) / stripes;
-        const c  = [applyH(H,0,y0), applyH(H,1,y0), applyH(H,1,y1), applyH(H,0,y1)];
+
+      if (zebraState.template === 'carril') {
+        // ── Carril bici ─────────────────────────────────────
+        const { opacity, wear, borderW, laneColor, borderTone } = getCarrilParams();
+        pCtx.globalAlpha = opacity;
+
+        // 1. Superficie de color
+        pCtx.fillStyle = laneColor;
+        const quad = [applyH(H,0,0), applyH(H,1,0), applyH(H,1,1), applyH(H,0,1)];
         pCtx.beginPath();
-        pCtx.moveTo(c[0].x, c[0].y);
-        for (let j = 1; j < 4; j++) pCtx.lineTo(c[j].x, c[j].y);
+        pCtx.moveTo(quad[0].x, quad[0].y);
+        for (let j = 1; j < 4; j++) pCtx.lineTo(quad[j].x, quad[j].y);
         pCtx.closePath();
         pCtx.fill();
-        // Desgaste: destination-out dentro del clip de la franja.
-        // El path sigue activo tras fill(), clip() lo usa directamente.
         if (wear > 0 && wearTexture) {
           pCtx.save();
           pCtx.clip();
@@ -686,6 +732,42 @@ function drawZebraPreview() {
           pCtx.globalAlpha = wear;
           pCtx.drawImage(wearTexture, 0, 0, imgW, imgH);
           pCtx.restore();
+        }
+
+        // 2. Líneas de borde blancas
+        pCtx.globalAlpha = opacity;
+        pCtx.fillStyle   = borderTone;
+        [[0, borderW], [1 - borderW, 1]].forEach(([x0, x1]) => {
+          const c = [applyH(H,x0,0), applyH(H,x1,0), applyH(H,x1,1), applyH(H,x0,1)];
+          pCtx.beginPath();
+          pCtx.moveTo(c[0].x, c[0].y);
+          for (let j = 1; j < 4; j++) pCtx.lineTo(c[j].x, c[j].y);
+          pCtx.closePath();
+          pCtx.fill();
+        });
+
+      } else {
+        // ── Paso de cebra ────────────────────────────────────
+        const { stripes, stripeFill, toneColor, opacity, wear } = getZebraParams();
+        pCtx.globalAlpha = opacity;
+        pCtx.fillStyle   = toneColor;
+        for (let i = 0; i < stripes; i++) {
+          const y0 = i / stripes;
+          const y1 = (i + stripeFill) / stripes;
+          const c  = [applyH(H,0,y0), applyH(H,1,y0), applyH(H,1,y1), applyH(H,0,y1)];
+          pCtx.beginPath();
+          pCtx.moveTo(c[0].x, c[0].y);
+          for (let j = 1; j < 4; j++) pCtx.lineTo(c[j].x, c[j].y);
+          pCtx.closePath();
+          pCtx.fill();
+          if (wear > 0 && wearTexture) {
+            pCtx.save();
+            pCtx.clip();
+            pCtx.globalCompositeOperation = 'destination-out';
+            pCtx.globalAlpha = wear;
+            pCtx.drawImage(wearTexture, 0, 0, imgW, imgH);
+            pCtx.restore();
+          }
         }
       }
       pCtx.globalAlpha = 1;
@@ -763,6 +845,55 @@ function renderZebraStroke(targetCtx, stroke) {
   targetCtx.restore();
 }
 
+// Renderiza un stroke de carril bici sobre targetCtx (espacio de imagen).
+function renderCarrilStroke(targetCtx, stroke) {
+  const p = stroke.points;
+  const H = computeHomography(
+    [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}],
+    [p[1], p[2], p[3], p[0]]
+  );
+  if (!H) return;
+  const wear       = stroke.wear ?? 0;
+  const borderTone = getZebraToneColor(stroke.tone ?? 15);
+  const borderW    = stroke.borderW ?? 0.08;
+  const imgW       = state.image.naturalWidth;
+  const imgH       = state.image.naturalHeight;
+
+  targetCtx.save();
+  targetCtx.globalAlpha = stroke.opacity;
+
+  // 1. Superficie de color
+  targetCtx.fillStyle = stroke.laneColor ?? '#4ade80';
+  const quad = [applyH(H,0,0), applyH(H,1,0), applyH(H,1,1), applyH(H,0,1)];
+  targetCtx.beginPath();
+  targetCtx.moveTo(quad[0].x, quad[0].y);
+  for (let j = 1; j < 4; j++) targetCtx.lineTo(quad[j].x, quad[j].y);
+  targetCtx.closePath();
+  targetCtx.fill();
+  if (wear > 0 && wearTexture) {
+    targetCtx.save();
+    targetCtx.clip();
+    targetCtx.globalCompositeOperation = 'destination-out';
+    targetCtx.globalAlpha = wear;
+    targetCtx.drawImage(wearTexture, 0, 0, imgW, imgH);
+    targetCtx.restore();
+  }
+
+  // 2. Líneas de borde blancas
+  targetCtx.globalAlpha = stroke.opacity;
+  targetCtx.fillStyle   = borderTone;
+  [[0, borderW], [1 - borderW, 1]].forEach(([x0, x1]) => {
+    const c = [applyH(H,x0,0), applyH(H,x1,0), applyH(H,x1,1), applyH(H,x0,1)];
+    targetCtx.beginPath();
+    targetCtx.moveTo(c[0].x, c[0].y);
+    for (let j = 1; j < 4; j++) targetCtx.lineTo(c[j].x, c[j].y);
+    targetCtx.closePath();
+    targetCtx.fill();
+  });
+
+  targetCtx.restore();
+}
+
 // Maneja el toque/click en modo zebra.
 function handleZebraDown(sx, sy) {
   if (!state.image) return;
@@ -788,17 +919,26 @@ function confirmZebra() {
   const pts = zebraState.points;
   if (pts.length !== 4 || !state.image) return;
 
-  const { stripes, stripeFill, tone, opacity, wear } = getZebraParams();
-  const stroke = {
-    tool:      'zebra',
-    points:    [...pts],
-    stripes,
-    stripeFill,
-    opacity,
-    tone,
-    wear,
-  };
-  renderZebraStroke(dCtx, stroke);
+  const tone    = parseInt(zebraToneSlider.value, 10);
+  const opacity = parseInt(zebraOpacSlider.value, 10) / 100;
+  const wear    = parseInt(zebraWearSlider.value, 10) / 100;
+  let stroke;
+  if (zebraState.template === 'carril') {
+    stroke = {
+      tool:      'carril',
+      points:    [...pts],
+      opacity,
+      tone,
+      wear,
+      laneColor: carrilColorPicker.value,
+      borderW:   parseInt(carrilBorderSlider.value, 10) / 100,
+    };
+    renderCarrilStroke(dCtx, stroke);
+  } else {
+    const { stripes, stripeFill } = getZebraParams();
+    stroke = { tool: 'zebra', points: [...pts], stripes, stripeFill, opacity, tone, wear };
+    renderZebraStroke(dCtx, stroke);
+  }
   state.strokes.push(stroke);
   state.redoStack = [];
 
@@ -933,6 +1073,8 @@ function redo() {
     dCtx.restore();
   } else if (stroke.tool === 'zebra') {
     renderZebraStroke(dCtx, stroke);
+  } else if (stroke.tool === 'carril') {
+    renderCarrilStroke(dCtx, stroke);
   } else {
     renderStroke(dCtx, stroke);
   }
