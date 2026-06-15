@@ -34,11 +34,17 @@ const zebraStripeWSlider = document.getElementById('zebra-stripe-w');
 const zebraStripeWVal    = document.getElementById('zebra-stripe-w-val');
 const zebraGapWSlider    = document.getElementById('zebra-gap-w');
 const zebraGapWVal       = document.getElementById('zebra-gap-w-val');
+const zebraToneSlider    = document.getElementById('zebra-tone');
+const zebraToneVal       = document.getElementById('zebra-tone-val');
+const zebraOpacSlider    = document.getElementById('zebra-opacity');
+const zebraOpacVal       = document.getElementById('zebra-opacity-val');
+const zebraWearSlider    = document.getElementById('zebra-wear');
+const zebraWearVal       = document.getElementById('zebra-wear-val');
 const toolbarEl          = document.getElementById('toolbar');
 const toolbarWrap        = document.getElementById('toolbar-wrap');
 
-// ── Constantes zebra ────────────────────────────────────────
-const ZEBRA_OPACITY = 0.82;   // stripes y stripeFill son dinámicos (sliders)
+// ── Caché de textura de desgaste zebra (generada una sola vez) ─
+let wearTexture = null;
 
 // ── Estado de la aplicación ─────────────────────────────────
 const state = {
@@ -120,7 +126,8 @@ function init() {
   btnZebraConfirm.addEventListener('click', confirmZebra);
   btnZebraCancel.addEventListener('click',  cancelZebra);
 
-  [zebraLengthSlider, zebraStripeWSlider, zebraGapWSlider].forEach(s =>
+  [zebraLengthSlider, zebraStripeWSlider, zebraGapWSlider,
+   zebraToneSlider, zebraOpacSlider, zebraWearSlider].forEach(s =>
     s.addEventListener('input', () => {
       updateZebraParamDisplays();
       if (zebraState.points.length >= 2) drawZebraPreview();
@@ -466,12 +473,13 @@ function setActiveTool(tool) {
   document.querySelectorAll('[data-tool]').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.tool === tool)
   );
-  // Entrar en zebra: inicializar instrucciones y displays de parámetros
+  // Entrar en zebra: inicializar instrucciones, displays y textura de desgaste
   if (tool === 'zebra') {
     zebraState.points      = [];
     zebraState.draggingIdx = -1;
     updateZebraParamDisplays();
     updateZebraUI();
+    ensureWearTexture();
   }
   // Desplazar la barra para que el botón activo quede visible.
   // inline:'nearest' no mueve si ya es visible → no afecta al escritorio.
@@ -497,6 +505,45 @@ function updateButtons() {
 // ============================================================
 // FASE 2 — PASO DE CEBRA EN PERSPECTIVA
 // ============================================================
+
+// Interpola de blanco puro (t=0) a blanco sucio/grisáceo cálido (t=100).
+function getZebraToneColor(t) {
+  const r = Math.round(255 - t * 0.57);  // 255 → 198
+  const g = Math.round(255 - t * 0.61);  // 255 → 194
+  const b = Math.round(255 - t * 0.69);  // 255 → 186
+  return `rgb(${r},${g},${b})`;
+}
+
+// Genera una textura de desgaste (elipses aleatorias negras sobre fondo
+// transparente). Se usa con destination-out para "comer" partes de las
+// franjas. 900 elipses orientadas en horizontal simulan rodadas de tráfico.
+function generateWearTexture() {
+  const size = 512;
+  const tc   = document.createElement('canvas');
+  tc.width   = tc.height = size;
+  const tCtx = tc.getContext('2d');
+  tCtx.fillStyle = '#000';
+  for (let i = 0; i < 900; i++) {
+    const x     = Math.random() * size;
+    const y     = Math.random() * size;
+    const rx    = 2 + Math.random() * 18;
+    const ry    = 1 + Math.random() * 6;
+    const angle = (Math.random() - 0.5) * 0.4;
+    tCtx.save();
+    tCtx.globalAlpha = 0.04 + Math.random() * 0.45;
+    tCtx.translate(x, y);
+    tCtx.rotate(angle);
+    tCtx.beginPath();
+    tCtx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    tCtx.fill();
+    tCtx.restore();
+  }
+  return tc;
+}
+
+function ensureWearTexture() {
+  if (!wearTexture) wearTexture = generateWearTexture();
+}
 
 // Calcula la homografía que mapea src → dst (4 pares de puntos).
 // Resuelve el sistema 8×8 por eliminación gaussiana con pivote parcial.
@@ -566,23 +613,33 @@ function updateZebraUI() {
   btnZebraConfirm.disabled = n < 4;
 }
 
-// Calcula stripes y stripeFill a partir de los sliders (proporciones reales).
+// Calcula todos los parámetros geométricos y visuales desde los sliders.
 function getZebraParams() {
   const lengthM  = parseFloat(zebraLengthSlider.value);
   const stripeM  = parseFloat(zebraStripeWSlider.value) / 100;
   const gapM     = parseFloat(zebraGapWSlider.value) / 100;
   const period   = stripeM + gapM;
+  const tone     = parseInt(zebraToneSlider.value, 10);
+  const opacity  = parseInt(zebraOpacSlider.value, 10) / 100;
+  const wear     = parseInt(zebraWearSlider.value, 10) / 100;
   return {
     stripes:    Math.max(1, Math.round(lengthM / period)),
     stripeFill: stripeM / period,
+    toneColor:  getZebraToneColor(tone),
+    tone,
+    opacity,
+    wear,
   };
 }
 
-// Sincroniza los textos de valor de los sliders.
+// Sincroniza los textos de valor de todos los sliders.
 function updateZebraParamDisplays() {
   zebraLengthVal.textContent  = zebraLengthSlider.value + ' m';
   zebraStripeWVal.textContent = zebraStripeWSlider.value + ' cm';
   zebraGapWVal.textContent    = zebraGapWSlider.value + ' cm';
+  zebraToneVal.textContent    = zebraToneSlider.value;
+  zebraOpacVal.textContent    = zebraOpacSlider.value + '%';
+  zebraWearVal.textContent    = zebraWearSlider.value + '%';
 }
 
 // Dibuja las franjas proyectadas más los handles en previewCanvas.
@@ -606,9 +663,11 @@ function drawZebraPreview() {
       [pts[1], pts[2], pts[3], pts[0]]
     );
     if (H) {
-      const { stripes, stripeFill } = getZebraParams();
-      pCtx.globalAlpha = ZEBRA_OPACITY;
-      pCtx.fillStyle   = '#ffffff';
+      const { stripes, stripeFill, toneColor, opacity, wear } = getZebraParams();
+      const imgW = state.image.naturalWidth;
+      const imgH = state.image.naturalHeight;
+      pCtx.globalAlpha = opacity;
+      pCtx.fillStyle   = toneColor;
       for (let i = 0; i < stripes; i++) {
         const y0 = i / stripes;
         const y1 = (i + stripeFill) / stripes;
@@ -618,6 +677,16 @@ function drawZebraPreview() {
         for (let j = 1; j < 4; j++) pCtx.lineTo(c[j].x, c[j].y);
         pCtx.closePath();
         pCtx.fill();
+        // Desgaste: destination-out dentro del clip de la franja.
+        // El path sigue activo tras fill(), clip() lo usa directamente.
+        if (wear > 0 && wearTexture) {
+          pCtx.save();
+          pCtx.clip();
+          pCtx.globalCompositeOperation = 'destination-out';
+          pCtx.globalAlpha = wear;
+          pCtx.drawImage(wearTexture, 0, 0, imgW, imgH);
+          pCtx.restore();
+        }
       }
       pCtx.globalAlpha = 1;
     }
@@ -666,9 +735,13 @@ function renderZebraStroke(targetCtx, stroke) {
     [p[1], p[2], p[3], p[0]]   // y=0 ↔ lado próximo, y=1 ↔ lado lejano
   );
   if (!H) return;
+  const toneColor = getZebraToneColor(stroke.tone ?? 15);
+  const wear      = stroke.wear ?? 0;
+  const imgW      = state.image.naturalWidth;
+  const imgH      = state.image.naturalHeight;
   targetCtx.save();
   targetCtx.globalAlpha = stroke.opacity;
-  targetCtx.fillStyle   = '#ffffff';
+  targetCtx.fillStyle   = toneColor;
   for (let i = 0; i < stroke.stripes; i++) {
     const y0 = i / stroke.stripes;
     const y1 = (i + stroke.stripeFill) / stroke.stripes;
@@ -678,6 +751,14 @@ function renderZebraStroke(targetCtx, stroke) {
     for (let j = 1; j < 4; j++) targetCtx.lineTo(c[j].x, c[j].y);
     targetCtx.closePath();
     targetCtx.fill();
+    if (wear > 0 && wearTexture) {
+      targetCtx.save();
+      targetCtx.clip();
+      targetCtx.globalCompositeOperation = 'destination-out';
+      targetCtx.globalAlpha = wear;
+      targetCtx.drawImage(wearTexture, 0, 0, imgW, imgH);
+      targetCtx.restore();
+    }
   }
   targetCtx.restore();
 }
@@ -707,13 +788,15 @@ function confirmZebra() {
   const pts = zebraState.points;
   if (pts.length !== 4 || !state.image) return;
 
-  const { stripes, stripeFill } = getZebraParams();
+  const { stripes, stripeFill, tone, opacity, wear } = getZebraParams();
   const stroke = {
     tool:      'zebra',
     points:    [...pts],
     stripes,
     stripeFill,
-    opacity:   ZEBRA_OPACITY,
+    opacity,
+    tone,
+    wear,
   };
   renderZebraStroke(dCtx, stroke);
   state.strokes.push(stroke);
