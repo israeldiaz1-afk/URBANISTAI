@@ -291,6 +291,37 @@ html, body {
   flex-shrink: 0;
 }
 
+/* ── Envoltorio del toolbar: fades de desborde en scroll ─── */
+#toolbar-wrap {
+  position: relative;
+}
+
+#toolbar-wrap::before,
+#toolbar-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+#toolbar-wrap::before {
+  left: 0;
+  background: linear-gradient(to right, var(--bg-toolbar) 20%, transparent);
+}
+
+#toolbar-wrap::after {
+  right: 0;
+  background: linear-gradient(to left, var(--bg-toolbar) 20%, transparent);
+}
+
+#toolbar-wrap.fade-left::before  { opacity: 1; }
+#toolbar-wrap.fade-right::after  { opacity: 1; }
+
 /* ── Barra de herramientas ────────────────────────────────── */
 #toolbar {
   display: flex;
@@ -301,7 +332,12 @@ html, body {
   min-height: var(--toolbar-h);
   background: var(--bg-toolbar);
   border-top: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+
+#toolbar::-webkit-scrollbar { display: none; }
 
 /* Separador visual entre grupos de botones */
 .tool-separator {

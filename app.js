@@ -34,6 +34,8 @@ const zebraStripeWSlider = document.getElementById('zebra-stripe-w');
 const zebraStripeWVal    = document.getElementById('zebra-stripe-w-val');
 const zebraGapWSlider    = document.getElementById('zebra-gap-w');
 const zebraGapWVal       = document.getElementById('zebra-gap-w-val');
+const toolbarEl          = document.getElementById('toolbar');
+const toolbarWrap        = document.getElementById('toolbar-wrap');
 
 // ── Constantes zebra ────────────────────────────────────────
 const ZEBRA_OPACITY = 0.82;   // stripes y stripeFill son dinámicos (sliders)
@@ -133,6 +135,7 @@ function init() {
 
   setupMouse();
   setupTouch();
+  toolbarEl.addEventListener('scroll', updateToolbarFades, { passive: true });
   setActiveTool('pan');
 }
 
@@ -161,6 +164,7 @@ function resizeCanvas() {
   previewCanvas.width   = w;  previewCanvas.height   = h;
   if (state.isDrawing) { state.isDrawing = false; state.currentStroke = null; }
   draw();
+  updateToolbarFades();
 }
 
 // ============================================================
@@ -435,6 +439,16 @@ function fitToCanvas() {
 // GESTIÓN DE HERRAMIENTAS
 // ============================================================
 
+// Muestra/oculta los fades laterales según la posición de scroll del toolbar.
+// fade-left  → hay contenido oculto a la izquierda
+// fade-right → hay contenido oculto a la derecha
+// En escritorio (todo cabe) scrollWidth ≈ clientWidth → ningún fade se activa.
+function updateToolbarFades() {
+  const { scrollLeft, scrollWidth, clientWidth } = toolbarEl;
+  toolbarWrap.classList.toggle('fade-left',  scrollLeft > 1);
+  toolbarWrap.classList.toggle('fade-right', scrollLeft < scrollWidth - clientWidth - 1);
+}
+
 function setActiveTool(tool) {
   if (state.isDrawing) {
     state.isDrawing     = false;
@@ -459,6 +473,11 @@ function setActiveTool(tool) {
     updateZebraParamDisplays();
     updateZebraUI();
   }
+  // Desplazar la barra para que el botón activo quede visible.
+  // inline:'nearest' no mueve si ya es visible → no afecta al escritorio.
+  const activeBtn = document.querySelector('[data-tool].active');
+  if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+
   // Recalcular dimensiones: mostrar/ocultar #zebra-bar y #props-bar
   // cambia la altura disponible del canvas. getBoundingClientRect() fuerza
   // reflow síncrono, así que cssH/cssW quedan correctos inmediatamente.
