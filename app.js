@@ -459,6 +459,10 @@ function setActiveTool(tool) {
     updateZebraParamDisplays();
     updateZebraUI();
   }
+  // Recalcular dimensiones: mostrar/ocultar #zebra-bar y #props-bar
+  // cambia la altura disponible del canvas. getBoundingClientRect() fuerza
+  // reflow síncrono, así que cssH/cssW quedan correctos inmediatamente.
+  resizeCanvas();
 }
 
 function updateButtons() {
